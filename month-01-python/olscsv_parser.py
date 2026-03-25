@@ -113,24 +113,6 @@ def load_and_classify(filepath):
     df['Recommended Action'] = df.apply(recommend, axis=1)
     return df
 
-def load_assigned_user_map(filepath):
-    if not filepath:
-        return {}
-    assets_df = pd.read_csv(filepath)
-    if 'AssetID' not in assets_df.columns or 'Assigned User' not in assets_df.columns:
-        raise ValueError("Second CSV must contain 'AssetID' and 'Assigned User' columns")
-    filtered = assets_df[assets_df['AssetID'].astype(str).str.contains('-IN', case=False, na=False)].copy()
-    filtered['__asset_norm__'] = (
-        filtered['AssetID']
-        .astype(str)
-        .str.replace('-IN', '', case=False, regex=False)
-        .str.strip()
-        .str.upper()
-    )
-    filtered['Assigned User'] = filtered['Assigned User'].fillna('').astype(str)
-    filtered = filtered[filtered['__asset_norm__'] != '']
-    return dict(zip(filtered['__asset_norm__'], filtered['Assigned User']))
-
 def write_summary(wb, df, gen_date):
     ws = wb.active
     ws.title = "Summary"
@@ -194,10 +176,9 @@ def write_summary(wb, df, gen_date):
         c_value.alignment = center()
     ws.freeze_panes = "A2"
 
-def generate_report(filepath, assets_filepath=None):
+def generate_report(filepath):
     print(f"\nReading: {filepath}")
     df = load_and_classify(filepath)
-    assigned_user_map = load_assigned_user_map(assets_filepath)
     gen_date = datetime.now().strftime("%d-%b-%Y %H:%M")
     total = len(df)
     print(f"Loaded {total} endpoints")
@@ -289,26 +270,20 @@ def generate_report(filepath, assets_filepath=None):
         'Endpoint name', 'OS type', 'IP address',
         'Sensor last connected', 'Naming Status'
     ]].copy()
-    if assigned_user_map:
-        reinstall_df['Assigned User'] = reinstall_df['Endpoint name'].apply(
-            lambda x: assigned_user_map.get(str(x).strip().upper(), "")
-        )
     reinstall_df.insert(0, '#', range(1, len(reinstall_df) + 1))
     reinstall_df['Uninstalled'] = ""
     reinstall_df['Reinstalled'] = ""
     reinstall_df['Verified'] = ""
     wb.create_sheet("Reinstall Checklist")
     ws_ck = wb["Reinstall Checklist"]
-    checklist_cols = ['#', 'Endpoint name', 'OS type', 'IP address',
-                      'Sensor last connected', 'Uninstalled', 'Reinstalled', 'Verified']
-    if assigned_user_map:
-        checklist_cols.append('Assigned User')
-    ws_ck.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(checklist_cols))
+    ws_ck.merge_cells("A1:H1")
     ws_ck["A1"] = "Instructions: 1) Uninstall Trend Micro  2) Reboot  3) Reinstall fresh agent  4) Verify connection  5) Tick off below"
     ws_ck["A1"].fill = fill("B71C1C")
     ws_ck["A1"].font = font(bold=True, color="FFFFFF", size=10)
     ws_ck["A1"].alignment = left()
     ws_ck.row_dimensions[1].height = 22
+    checklist_cols = ['#', 'Endpoint name', 'OS type', 'IP address',
+                      'Sensor last connected', 'Uninstalled', 'Reinstalled', 'Verified']
     for ci, col in enumerate(checklist_cols, 1):
         c = ws_ck.cell(row=2, column=ci, value=col)
         c.fill = fill("C62828")
@@ -338,7 +313,6 @@ def generate_report(filepath, assets_filepath=None):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python3 csv_parser.py <input.csv> [assets.csv]")
+        print("Usage: python3 csv_parser.py <input.csv>")
         sys.exit(1)
-    second_file = sys.argv[2] if len(sys.argv) > 2 else None
-    generate_report(sys.argv[1], second_file)
+    generate_report(sys.argv[1])
